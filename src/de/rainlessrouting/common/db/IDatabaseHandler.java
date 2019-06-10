@@ -20,5 +20,5 @@ public interface IDatabaseHandler {
 	public DBGridInfo loadGridInfo(String gridId) throws Exception;
 	public DBGridInfo[] loadGridInfos() throws Exception;
 	
-	public Map<Long, List<Long>> loadTimes(String gridId, long fromTimestamp, long xHoursBack) throws Exception;
+	public Map<Long, List<Long>> loadTimes(String gridId, long fromTimestamp, int hoursAgo) throws Exception;
 }

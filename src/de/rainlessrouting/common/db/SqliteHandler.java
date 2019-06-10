@@ -6,11 +6,11 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
@@ -67,42 +67,74 @@ public class SqliteHandler implements IDatabaseHandler {
 	// private static final String SQL_UPDATE = 
 	// 		"UPDATE person SET firstname=?, surname=?,age=? WHERE id=?";
 	
-	private Connection connection;
+	/** 
+	 * As gridInfo objects are static, they do not need to be loaded and stored again in every turn.
+	 * This variable caches gridInfo objects and hinders storing in every turn */
+	private HashMap<String, DBGridInfo> gridInfoCache;
+	
+	// ToDo: Instead of throwing exception in the method headers I should handle these right within the methods in order to gracefully close the connection
 	
 	public void init() throws Exception
+	{
+		gridInfoCache = new HashMap<String, DBGridInfo>();
+		Class.forName("org.sqlite.JDBC");
+	}	
+	
+	private Connection getConnection() throws SQLException
 	{
 		File f = new File(Paths.get(System.getProperty("user.home"), "rainlessrouting").toString());
 		if (!f.exists())
 			f.mkdir();
 		String path = Paths.get(System.getProperty("user.home"), "rainlessrouting", "rainlessrouting.db").toString();
-//		String path = "rainlessrouting.db";
 		
-		Class.forName("org.sqlite.JDBC");
+//		System.out.println("SqliteHandler.init(): Connect to " + path);
 		
-		System.out.println("SqliteHandler.init(): Connect to " + path);
-		connection = DriverManager.getConnection("jdbc:sqlite:".concat(path));
-	}	
+		return DriverManager.getConnection("jdbc:sqlite:".concat(path));
+	}
 	
-	public void createTables() throws Exception
+	private void closeConnection(Connection connection)
 	{
+		try 
+		{
+			connection.close();
+		} 
+		catch (SQLException e) 
+		{
+			e.printStackTrace();
+		}
+	}
+	
+	public void createTables() throws SQLException 
+	{
+		Connection connection = getConnection();
+		
 		Statement stmt = connection.createStatement();
 		
 		System.out.println("SqliteHandler.createTables(): Create Tables ... ");
 		stmt.executeUpdate(SQL_CREATE_TABLE_GRID_INFO);
 		stmt.executeUpdate(SQL_CREATE_TABLE_VALUE_GRID);
+		
+		closeConnection(connection);
 	}
 	
-	public void dropTables() throws Exception
+	public void dropTables() throws SQLException
 	{
+		Connection connection = getConnection();
+		
 		Statement stmt = connection.createStatement();
 		
 		System.out.println("SqliteHandler.dropTables(): Drop Tables ... ");
 		stmt.executeUpdate(SQL_DROP_TABLE_GRID_INFO);
 		stmt.executeUpdate(SQL_DROP_TABLE_VALUE_GRID);
+		
+		closeConnection(connection);
 	}
 	
 	@Override
-	public void saveValueGrid(DBValueGrid valueGrid) throws Exception {
+	public void saveValueGrid(DBValueGrid valueGrid) throws Exception 
+	{
+		Connection connection = getConnection();
+		
 		PreparedStatement stmt = connection.prepareStatement(SQL_INSERT_VALUE_GRID);
 		stmt.setLong(1, valueGrid.getTimestamp()); 
 		stmt.setLong(2, valueGrid.getTimeOffset());
@@ -111,9 +143,14 @@ public class SqliteHandler implements IDatabaseHandler {
 	
 //		System.out.println("SqliteHandler.saveValueGrid(): statement=" + SQL_INSERT_VALUE_GRID);
 		stmt.executeUpdate();
+		
+		closeConnection(connection);
 	}
 
-	public DBValueGrid[] loadValueGrids(String gridId, long fromTimestamp) throws Exception {
+	public DBValueGrid[] loadValueGrids(String gridId, long fromTimestamp) throws Exception 
+	{
+		Connection connection = getConnection();
+		
 //		System.out.println("SqliteHandler.loadValueGrid(): statement=" + SQL_SELECT_VALUE_GRID + " timestamp=" + timestamp);
 				
 		PreparedStatement stmt = connection.prepareStatement(SQL_SELECT_VALUE_GRID_BY_TIMESTMP);
@@ -135,10 +172,15 @@ public class SqliteHandler implements IDatabaseHandler {
 			list.add(new DBValueGrid(timestamp, offset, gridId, values));
 		}
 	
+		closeConnection(connection);
+		
 		return list.toArray(new DBValueGrid[0]);
 	}
 	
-	public DBValueGrid loadValueGrid(String gridId, long timestamp, long offset) throws Exception {
+	public DBValueGrid loadValueGrid(String gridId, long timestamp, long offset) throws Exception 
+	{
+		Connection connection = getConnection();
+		
 //		System.out.println("SqliteHandler.loadValueGrid(): statement=" + SQL_SELECT_VALUE_GRID + " timestamp=" + timestamp);
 				
 		PreparedStatement stmt = connection.prepareStatement(SQL_SELECT_VALUE_GRID_BY_TIMESTMP_AND_OFFSET);
@@ -148,6 +190,7 @@ public class SqliteHandler implements IDatabaseHandler {
 		
 		ResultSet rs = stmt.executeQuery();
 		
+		DBValueGrid grid = null;
 		while(rs.next()) {
 			
 			byte[] byteArr = rs.getBytes("values_blob"); 
@@ -155,14 +198,18 @@ public class SqliteHandler implements IDatabaseHandler {
 			System.out.println("SqliteHandler: Deserialize " + byteArr.length + " bytes for timestamp " + timestamp + " offset " + offset);
 			double[][] values = (double[][])Serializer.deserializeBytes(byteArr);
 			
-			return new DBValueGrid(timestamp, offset, gridId, values);
+			grid = new DBValueGrid(timestamp, offset, gridId, values);
 		}
 	
-		return null;
+		closeConnection(connection);
+		
+		return grid;
 	}
 	
-	public DBValueGrid[] loadValueGrids(String gridId) throws Exception {
-		
+	public DBValueGrid[] loadValueGrids(String gridId) throws Exception 
+	{
+		Connection connection = getConnection();
+			
 //		System.out.println("SqliteHandler.loadGridInfo(): statement=" + SQL_SELECT_VALUE_GRID_BY_GRID_ID + " gridId=" + gridId);
 		
 		PreparedStatement stmt = connection.prepareStatement(SQL_SELECT_VALUE_GRID_BY_GRID_ID);
@@ -182,13 +229,18 @@ public class SqliteHandler implements IDatabaseHandler {
 			list.add(new DBValueGrid(timestamp, offset, gridId, values));
 		}
 		
+		closeConnection(connection);
+		
 		return list.toArray(new DBValueGrid[0]);
 	}
 	
 	/**
 	 * Load all ValueGrids. This is mainly for debugging purposes.
 	 */
-	public DBValueGrid[] loadValueGrids() throws Exception {
+	public DBValueGrid[] loadValueGrids() throws Exception 
+	{
+		Connection connection = getConnection();
+		
 //		System.out.println("SqliteHandler.loadValueGrid(): statement=" + SQL_SELECT_VALUE_GRID + " timestamp=" + timestamp);
 		
 		PreparedStatement stmt = connection.prepareStatement(SQL_SELECT_VALUE_GRIDS_ALL);
@@ -208,11 +260,18 @@ public class SqliteHandler implements IDatabaseHandler {
 			list.add(new DBValueGrid(timestamp, offset, gridId, values));
 		}
 	
+		closeConnection(connection);
+		
 		return list.toArray(new DBValueGrid[0]);
 	}
 	
 	public void saveGridInfo(DBGridInfo gridInfo) throws Exception
 	{
+		Connection connection = getConnection();
+		
+		if (gridInfoCache.containsKey(gridInfo.getId())) // do not store again, already stored
+			return;
+		
 		PreparedStatement stmt = connection.prepareStatement(SQL_INSERT_GRID_INFO);
 		stmt.setString(1, gridInfo.getId()); 
 		stmt.setInt(2, gridInfo.getWidth());
@@ -220,11 +279,23 @@ public class SqliteHandler implements IDatabaseHandler {
 		stmt.setBytes(4, Serializer.serializeObject(gridInfo.getGrid()));
 	
 //		System.out.println("SqliteHandler.saveGridInfo(): statement=" + SQL_INSERT_GRID_INFO);
-		stmt.executeUpdate();
+		try
+		{
+			stmt.executeUpdate();
+			gridInfoCache.put(gridInfo.getId(), gridInfo);
+		}
+		catch(SQLException exc)
+		{
+//			System.err.println("SqliteHandler: GridInfo already stored: gridInfo=" + gridInfo);
+		}
+		
+		closeConnection(connection);
 	}
 	
 	public DBGridInfo loadGridInfo(String gridId) throws Exception
 	{
+		Connection connection = getConnection();
+		
 //		System.out.println("SqliteHandler.loadGridInfo(): statement=" + SQL_SELECT_GRID_INFO + " gridId=" + gridId);
 		
 		PreparedStatement stmt = connection.prepareStatement(SQL_SELECT_GRID_INFO);
@@ -232,6 +303,7 @@ public class SqliteHandler implements IDatabaseHandler {
 		
 		ResultSet rs = stmt.executeQuery();
 		
+		DBGridInfo gridInfo = null;
 		while(rs.next()) {
 			
 			int width = rs.getInt("width");
@@ -240,14 +312,20 @@ public class SqliteHandler implements IDatabaseHandler {
 			
 			DBGeoGrid grid = (DBGeoGrid)Serializer.deserializeBytes(byteArr);
 			
-			return new DBGridInfo(gridId, width, height, grid);
+			gridInfo = new DBGridInfo(gridId, width, height, grid);
+			
+			gridInfoCache.put(gridId, gridInfo);
 		}
 		
-		return null; // nothing found
+		closeConnection(connection);
+		
+		return gridInfo;
 	}
 	
 	public DBGridInfo[] loadGridInfos() throws Exception
 	{
+		Connection connection = getConnection();
+		
 //		System.out.println("SqliteHandler.loadGridInfo(): statement=" + SQL_SELECT_GRID_INFO + " gridId=" + gridId);
 		
 		List<DBGridInfo> list = new ArrayList<DBGridInfo>();
@@ -264,8 +342,12 @@ public class SqliteHandler implements IDatabaseHandler {
 			
 			DBGeoGrid grid = (DBGeoGrid)Serializer.deserializeBytes(byteArr);
 			
-			list.add(new DBGridInfo(gridId, width, height, grid));
+			DBGridInfo gridInfo = new DBGridInfo(gridId, width, height, grid);
+			list.add(gridInfo);
+			gridInfoCache.put(gridId, gridInfo);
 		}
+		
+		closeConnection(connection);
 		
 		return list.toArray(new DBGridInfo[0]); // nothing found
 	}
@@ -275,14 +357,16 @@ public class SqliteHandler implements IDatabaseHandler {
 	 * This includes all past times (dating less than x hours back) with offset=0 (because these are real measurements 
 	 * and additionally all ffsets of the most recent timestamp.
 	 */
-	public SortedMap<Long, List<Long>> loadTimes(String gridId, long fromTimestamp, long xHoursBack) throws Exception
+	public SortedMap<Long, List<Long>> loadTimes(String gridId, long fromTimestamp, int hoursAgo) throws Exception
 	{
+		Connection connection = getConnection();
+		
 		// this list will contain all timestamps of the last x hours and additionally all offsets of the most recent timestamp
 		SortedMap<Long, List<Long>> timestampsAndOffsets = new TreeMap<Long, List<Long>>();
 		
 		PreparedStatement stmt = connection.prepareStatement("SELECT timestamp FROM value_grid WHERE grid_id=? AND timestamp > ? AND time_offset=0 ORDER BY timestamp ASC, time_offset ASC");
 		stmt.setString(1, gridId);
-		stmt.setLong(2, fromTimestamp - (1000*60*60 * xHoursBack));
+		stmt.setLong(2, fromTimestamp - (1000*60*60 * hoursAgo));
 		
 		ResultSet rs = stmt.executeQuery();
 
@@ -308,6 +392,8 @@ public class SqliteHandler implements IDatabaseHandler {
 			long offset = rs.getLong("time_offset");
 			timestampsAndOffsets.get(mostRecentTimestamp).add(offset);
 		}
+		
+		closeConnection(connection);
 		
 		return timestampsAndOffsets;
 	}
@@ -359,19 +445,19 @@ public class SqliteHandler implements IDatabaseHandler {
 			System.err.println("GridInfos are NOT equal! gridInfo=" + gridInfo + "  gridInfo2=" + gridInfo2);
 	}
 	
-	public static void main(String[] args)
-	{
-		System.out.println("SqliteHandler.main: start test ...");
-		
-		SqliteHandler sqlite = new SqliteHandler();
-		try {
-			sqlite.init();
-			testValueGrid(sqlite);
-			testGridInfo(sqlite);
-		} 
-		catch (Exception e) {
-			e.printStackTrace();
-		}
-		
-	}
+//	public static void main(String[] args)
+//	{
+//		System.out.println("SqliteHandler.main: start test ...");
+//		
+//		SqliteHandler sqlite = new SqliteHandler();
+//		try {
+//			sqlite.init();
+//			testValueGrid(sqlite);
+//			testGridInfo(sqlite);
+//		} 
+//		catch (Exception e) {
+//			e.printStackTrace();
+//		}
+//		
+//	}
 }

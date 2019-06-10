@@ -12,4 +12,15 @@ public class DateTimeFormatter {
 		return formatter.format(new Date(timestamp));
 	}
 	
+	public static String getDateTimeSeconds(long timestamp)
+	{
+		DateFormat formatter = new SimpleDateFormat("dd.MM kk:mm:ss");
+		return formatter.format(new Date(timestamp));
+	}
+	
+	public static String getTimeSeconds(long timestamp)
+	{
+		DateFormat formatter = new SimpleDateFormat("kk:mm:ss");
+		return formatter.format(new Date(timestamp));
+	}
 }
