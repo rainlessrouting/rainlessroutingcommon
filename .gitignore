@@ -84,7 +84,6 @@ Temporary Items
 *.iml
 
 # eclipse
-
 .settings
 .classpath
 .project
