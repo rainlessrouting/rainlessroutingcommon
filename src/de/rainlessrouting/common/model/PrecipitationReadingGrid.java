@@ -36,7 +36,7 @@ public class PrecipitationReadingGrid  implements Serializable {
 
 	public int getLongGridSize()
 	{
-		return prGrid[0].length;
+		return (getLatGridSize() > 0) ? prGrid[0].length : 0;
 	}
 	
 	public int getLatGridSize()
